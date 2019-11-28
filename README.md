@@ -8,7 +8,7 @@ A lib of models for human-like AI.
 
 PaddleCraft是一套基于模型的API，使用PaddleCraft，您可以直接声明并加载各种CV，Speech，NLP等经典人工智能领域的模型（及其预训练参数），并可以通过各种预置功能，对不同模型进行链接，对抗等操作。
 
-PaddleCraft完全基于PaddlePaddle平台开发；
+PaddleCraft完全基于PaddlePaddle平台开发，暂时计划以插件形式存在，最终稳定后融入paddlepaddle框架。
 
 
 
