@@ -23,8 +23,8 @@ import numpy as np
 import paddle.fluid as fluid
 import paddle.fluid.layers as layers
 
-from model.paddlecraft.base import logical2physical_name, physical2logical_name
-from model.paddlecraft.base import BaseModel
+from paddlecraft.base import logical2physical_name, physical2logical_name
+from paddlecraft.base import BaseModel
 
 class TransformerEncoder(BaseModel):
 
