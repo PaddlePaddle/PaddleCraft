@@ -31,29 +31,70 @@ class TransformerEncoder(BaseModel):
     def __init__(
         self, 
         name,
-        num_layers = 12,
-        num_heads = 16
+        n_layer = 12,
+        n_head = 12,
+        d_wordembedding = 768,
+        d_key = 64,             # embedding_size // num_heads
+        d_value = 64,           # embedding_size // num_heads
+        d_model = 768,
+        d_inner_hid = 768 * 4,  # embedding_size * 4
+        prepostprocess_dropout = 0.1,
+        attention_dropout = 0.1,
+        relu_dropout = 0.,
+        hidden_act = "gelu",
+        preprocess_cmd = "",
+        postprocess_cmd = "dan",
+        param_initializer = fluid.initializer.TruncatedNormal(scale=0.02)
         ):
 
         self.name = name
+        self.n_layer = n_layer
+        self.n_head = n_head
+        self.d_wordembedding = d_wordembedding
+        self.d_key = d_key
+        self.d_value = d_value
+        self.d_model = d_model
+        self.d_inner_hid = d_inner_hid
+        self.prepostprocess_dropout = prepostprocess_dropout
+        self.attention_dropout = attention_dropout
+        self.relu_dropout = relu_dropout
+        self.hidden_act = hidden_act
+        self.preprocess_cmd = preprocess_cmd
+        self.postprocess_cmd = postprocess_cmd
+        self.param_initializer = param_initializer
+
+        self.param_names = {
+            'blocks' : []
+        }
 
         self.model = {
             'blocks' : []
         }
 
-        self.num_layers = num_layers
-
         # define the structure of transformer_encoder
-        # the self.model can also help debug and print the model strcuture.
-        for i in range(self.num_layers):
+        # the self.param_names can also help debug and print the model strcuture.
+        for i in range(self.n_layer):
             curr_block = {}
             curr_block_physical_name = logical2physical_name(self.name, '_layer_' + str(i))
+
+            curr_model_block = {
+                'multi_head_attention' : {
+                    'attention_softmax' : None,
+                    'attention_out' : None,
+                    'post_attention_out' : None,
+                    },
+                'feedforward' : {
+                    'feedforward_out' : None,
+                    'post_feedforward_out' : None
+                }
+            }
+
             curr_block['multi_head_attention'] = {
-                'pre_attenion' : 
+                'pre_attention' : 
                     {
                     'scale' : logical2physical_name(curr_block_physical_name, '_pre_att_layer_norm_scale'),
                     'bias' : logical2physical_name(curr_block_physical_name, '_pre_att_layer_norm_bias'),
-                    },
+                    } if 'n' in self.preprocess_cmd else {},
                 'attention_fc' : 
                     {
                     'query' : {'w' : logical2physical_name(curr_block_physical_name, '_multi_head_att_query_fc.w_0'), 
@@ -67,15 +108,16 @@ class TransformerEncoder(BaseModel):
                     },
                 'post_attention' : 
                     {
-                        # logical2physical_name(curr_block_physical_name, '_post_att')
-                    }
+                    'scale' : logical2physical_name(curr_block_physical_name, '_post_att_layer_norm_scale'),
+                    'bias' : logical2physical_name(curr_block_physical_name, '_post_att_layer_norm_bias')
+                    } if 'n' in self.postprocess_cmd else {}
             }
             curr_block['feedforward'] = {
                 'pre_feedforward' : 
                 {
                     'scale' : logical2physical_name(curr_block_physical_name, '_pre_ffn_layer_norm_scale'),
                     'bias' : logical2physical_name(curr_block_physical_name, '_pre_ffn_layer_norm_bias'),
-                },
+                } if 'n' in self.preprocess_cmd else {},
                 'feedforward_fc' : [
                     {
                     'w' : logical2physical_name(curr_block_physical_name, '_ffn_fc_0.w_0'),
@@ -88,14 +130,19 @@ class TransformerEncoder(BaseModel):
                     ],
                 'post_feedforward' : 
                     {
-                        # logical2physical_name(curr_block_physical_name, '_post_ffn')
-                    }
+                    'scale' : logical2physical_name(curr_block_physical_name, '_post_ffn_layer_norm_scale'),
+                    'bias' : logical2physical_name(curr_block_physical_name, '_post_ffn_layer_norm_bias'),
+                    } if 'n' in self.postprocess_cmd else {}
             }
-            self.model['blocks'].append(curr_block)
-        self.model['post_encoder'] = {
+
+            self.param_names['blocks'].append(curr_block)
+            self.model['blocks'].append(curr_model_block)
+
+        self.param_names['post_encoder'] = {
             'scale' : logical2physical_name(self.name, 'post_encoder_layer_norm_scale'),
             'bias' : logical2physical_name(self.name, 'post_encoder_layer_norm_bias'),
         }
+        self.model['post_encoder'] = None
 
     def multi_head_attention(
         self,
@@ -103,10 +150,10 @@ class TransformerEncoder(BaseModel):
         keys,
         values,
         attn_bias,
+        curr_block_id,
         d_key,
         d_value,
         d_model,
-        curr_block,
         n_head=1,
         dropout_rate=0.,
         cache=None,
@@ -116,6 +163,9 @@ class TransformerEncoder(BaseModel):
         computing softmax activiation to mask certain selected positions so that
         they will not considered in attention weights.
         """
+
+        curr_param_block = self.param_names['blocks'][curr_block_id]
+
         keys = queries if keys is None else keys
         values = keys if values is None else values
 
@@ -131,23 +181,23 @@ class TransformerEncoder(BaseModel):
                       size=d_key * n_head,
                       num_flatten_dims=2,
                       param_attr=fluid.ParamAttr(
-                          name=curr_block['multi_head_attention']['attention_fc']['query']['w'],
+                          name=curr_param_block['multi_head_attention']['attention_fc']['query']['w'],
                           initializer=param_initializer),
-                      bias_attr=curr_block['multi_head_attention']['attention_fc']['query']['b'])
+                      bias_attr=curr_param_block['multi_head_attention']['attention_fc']['query']['b'])
             k = layers.fc(input=keys,
                       size=d_key * n_head,
                       num_flatten_dims=2,
                       param_attr=fluid.ParamAttr(
-                          name=curr_block['multi_head_attention']['attention_fc']['key']['w'],,
+                          name=curr_param_block['multi_head_attention']['attention_fc']['key']['w'],
                           initializer=param_initializer),
-                      bias_attr=curr_block['multi_head_attention']['attention_fc']['key']['b'])
+                      bias_attr=curr_param_block['multi_head_attention']['attention_fc']['key']['b'])
             v = layers.fc(input=values,
                       size=d_value * n_head,
                       num_flatten_dims=2,
                       param_attr=fluid.ParamAttr(
-                          name=curr_block['multi_head_attention']['attention_fc']['value']['w'],
+                          name=curr_param_block['multi_head_attention']['attention_fc']['value']['w'],
                           initializer=param_initializer),
-                      bias_attr=curr_block['multi_head_attention']['attention_fc']['value']['b'])
+                      bias_attr=curr_param_block['multi_head_attention']['attention_fc']['value']['b'])
             return q, k, v
 
         def __split_heads(x, n_head):
@@ -193,12 +243,17 @@ class TransformerEncoder(BaseModel):
             if attn_bias:
                 product += attn_bias
             weights = layers.softmax(product)
+            
+            # memorize the weights in block
+            self.model['blocks'][curr_block_id]['multi_head_attention']['attention_softmax'] = weights
+
             if dropout_rate:
                 weights = layers.dropout(
                     weights,
                     dropout_prob=dropout_rate,
                     dropout_implementation="upscale_in_train",
                     is_test=False)
+
             out = layers.matmul(weights, v)
             return out
 
@@ -229,35 +284,37 @@ class TransformerEncoder(BaseModel):
                          size=d_model,
                          num_flatten_dims=2,
                          param_attr=fluid.ParamAttr(
-                             name=curr_block['multi_head_attention']['attention_fc']['output']['w'],
+                             name=curr_param_block['multi_head_attention']['attention_fc']['output']['w'],
                              initializer=param_initializer),
-                         bias_attr=curr_block['multi_head_attention']['attention_fc']['output']['b'])
-        
-        return proj_out
+                         bias_attr=curr_param_block['multi_head_attention']['attention_fc']['output']['b'])
 
+        return proj_out
 
     def positionwise_feed_forward(
         self,
         x,
+        curr_block_id,
         d_inner_hid,
         d_hid,
         dropout_rate,
         hidden_act,
-        curr_block,
         param_initializer=None):
         """
         Position-wise Feed-Forward Networks.
         This module consists of two linear transformations with a ReLU activation
         in between, which is applied to each position separately and identically.
         """
+        
+        curr_param_block = self.param_names['blocks'][curr_block_id]
+
         hidden = layers.fc(input=x,
                        size=d_inner_hid,
                        num_flatten_dims=2,
                        act=hidden_act,
                        param_attr=fluid.ParamAttr(
-                           name=curr_block['feedforward']['feedforward_fc'][0]['w'],
+                           name=curr_param_block['feedforward']['feedforward_fc'][0]['w'],
                            initializer=param_initializer),
-                       bias_attr=curr_block['feedforward']['feedforward_fc'][0]['b'])
+                       bias_attr=curr_param_block['feedforward']['feedforward_fc'][0]['b'])
     
         if dropout_rate:
             hidden = layers.dropout(
@@ -270,12 +327,11 @@ class TransformerEncoder(BaseModel):
                         size=d_hid,
                         num_flatten_dims=2,
                         param_attr=fluid.ParamAttr(
-                            name=curr_block['feedforward']['feedforward_fc'][1]['w'], 
+                            name=curr_param_block['feedforward']['feedforward_fc'][1]['w'], 
                             initializer=param_initializer),
-                        bias_attr=curr_block['feedforward']['feedforward_fc'][1]['b'])
+                        bias_attr=curr_param_block['feedforward']['feedforward_fc'][1]['b'])
     
         return out
-
 
     def pre_post_process_layer(
         self,
@@ -283,16 +339,20 @@ class TransformerEncoder(BaseModel):
         out, 
         process_cmd, 
         dropout_rate=0.,
-        name=''):
+        scale_name='',
+        bias_name='',
+        inner_res={}):
         """
         Add residual connection, layer normalization and droput to the out tensor
         optionally according to the value of process_cmd.
         This will be used before or after multi-head attention and position-wise
         feed-forward networks.
         """
+
         for cmd in process_cmd:
             if cmd == "a":  # add residual connection
                 out = out + prev_out if prev_out else out
+                inner_res['a'] = out
             elif cmd == "n":  # add layer normalization
                 out_dtype = out.dtype
                 if out_dtype == fluid.core.VarDesc.VarType.FP16:
@@ -301,13 +361,14 @@ class TransformerEncoder(BaseModel):
                     out,
                     begin_norm_axis=len(out.shape) - 1,
                     param_attr=fluid.ParamAttr(
-                        name=name + '_layer_norm_scale',
+                        name=scale_name,
                         initializer=fluid.initializer.Constant(1.)),
                     bias_attr=fluid.ParamAttr(
-                        name=name + '_layer_norm_bias',
+                        name=bias_name,
                         initializer=fluid.initializer.Constant(0.)))
                 if out_dtype == fluid.core.VarDesc.VarType.FP16:
                     out = layers.cast(x=out, dtype="float16")
+                inner_res['n'] = out
             elif cmd == "d":  # add dropout
                 if dropout_rate:
                     out = layers.dropout(
@@ -315,30 +376,41 @@ class TransformerEncoder(BaseModel):
                         dropout_prob=dropout_rate,
                         dropout_implementation="upscale_in_train",
                         is_test=False)
+                    inner_res['d'] = out
         return out
-
 
     def pre_process_layer(
         self,
         out,
         process_cmd,
-        dropout_rate=0.):
+        dropout_rate=0.,
+        scale_name='',
+        bias_name='',
+        inner_res = {}):
 
-        return self.pre_post_process_layer(None, out, process_cmd, dropout_rate)
+        final_out = self.pre_post_process_layer(None,
+            out, process_cmd, dropout_rate, scale_name=scale_name, bias_name=bias_name, inner_res=inner_res)
+
+        return final_out
 
     def post_process_layer(
         self,
         prev_out,
         out,
         process_cmd,
-        dropout_rate=0.):
+        dropout_rate=0.,
+        scale_name='',
+        bias_name='',
+        inner_res = {}):
 
-        return self.pre_post_process_layer(prev_out, out, process_cmd, dropout_rate)
+        return self.pre_post_process_layer(prev_out, 
+            out, process_cmd, dropout_rate, scale_name=scale_name, bias_name=bias_name, inner_res=inner_res)
 
     def encoder_layer(
         self,
         enc_input,
         attn_bias,
+        curr_block_id,
         n_head,
         d_key,
         d_value,
@@ -350,103 +422,139 @@ class TransformerEncoder(BaseModel):
         hidden_act,
         preprocess_cmd="n",
         postprocess_cmd="da",
-        param_initializer=None,
-        name=''):
+        param_initializer=None):
         """The encoder layers that can be stacked to form a deep encoder.
         This module consits of a multi-head (self) attention followed by
         position-wise feed-forward networks and both the two components companied
         with the post_process_layer to add residual connection, layer normalization
         and droput.
         """
+
+        curr_param_names = self.param_names['blocks'][curr_block_id]
+        _inner_res = {}
+
         attn_output = self.multi_head_attention(
-            pre_process_layer(
+            self.pre_process_layer(
                 enc_input,
                 preprocess_cmd,
                 prepostprocess_dropout,
-                name=name + '_pre_att'),
+                scale_name = '' if 'scale' not in curr_param_names['multi_head_attention']['pre_attention'] else curr_param_names['multi_head_attention']['pre_attention']['scale'],
+                bias_name = ''if 'bias' not in curr_param_names['multi_head_attention']['pre_attention'] else curr_param_names['multi_head_attention']['pre_attention']['bias']),
             None,
             None,
             attn_bias,
+            curr_block_id,
             d_key,
             d_value,
             d_model,
             n_head,
             attention_dropout,
-            param_initializer=param_initializer,
-            name=name + '_multi_head_att')
+            param_initializer=param_initializer)
+
         attn_output = self.post_process_layer(
             enc_input,
             attn_output,
             postprocess_cmd,
             prepostprocess_dropout,
-            name=name + '_post_att')
+            scale_name = '' if 'scale' not in curr_param_names['multi_head_attention']['post_attention'] else curr_param_names['multi_head_attention']['post_attention']['scale'],
+            bias_name = '' if 'bias' not in curr_param_names['multi_head_attention']['post_attention'] else curr_param_names['multi_head_attention']['post_attention']['bias'],
+            inner_res = _inner_res
+            )
+
+        if 'a' in _inner_res:
+            self.model['blocks'][curr_block_id]['multi_head_attention']['attention_out'] = _inner_res['a']
+        if 'd' in _inner_res and 'a' in _inner_res:
+            self.model['blocks'][curr_block_id]['multi_head_attention']['post_attention_out'] = _inner_res['n']
+
         ffd_output = self.positionwise_feed_forward(
-            pre_process_layer(
+            self.pre_process_layer(
                 attn_output,
                 preprocess_cmd,
                 prepostprocess_dropout,
-                name=name + '_pre_ffn'),
+                scale_name = '' if 'scale' not in curr_param_names['feedforward']['pre_feedforward'] else curr_param_names['feedforward']['pre_feedforward']['scale'],
+                bias_name = '' if 'bias' not in curr_param_names['feedforward']['pre_feedforward'] else curr_param_names['feedforward']['pre_feedforward']['bias']),
+            curr_block_id,
             d_inner_hid,
             d_model,
             relu_dropout,
             hidden_act,
-            param_initializer=param_initializer,
-            name=name + '_ffn')
-        return self.post_process_layer(
+            param_initializer=param_initializer)
+
+        _inner_res.clear()
+        final_out = self.post_process_layer(
             attn_output,
             ffd_output,
             postprocess_cmd,
             prepostprocess_dropout,
-            name=name + '_post_ffn')
+            scale_name = '' if 'scale' not in curr_param_names['feedforward']['post_feedforward'] else curr_param_names['feedforward']['post_feedforward']['scale'],
+            bias_name = '' if 'bias' not in curr_param_names['feedforward']['post_feedforward'] else curr_param_names['feedforward']['post_feedforward']['bias'],
+            inner_res = _inner_res)
 
+        if 'a' in _inner_res:
+            self.model['blocks'][curr_block_id]['feedforward']['feedforward_out'] = _inner_res['a']
 
-    def encode(self,
+        return final_out
+
+    def build(self,
             enc_input,
             attn_bias,
-            n_layer,
-            n_head,
-            d_key,
-            d_value,
-            d_model,
-            d_inner_hid,
-            prepostprocess_dropout,
-            attention_dropout,
-            relu_dropout,
-            hidden_act,
-            preprocess_cmd="n",
-            postprocess_cmd="da",
-            param_initializer=None,
-            name=''):
+            ):
+            #n_layer,
+            #n_head,
+            #d_key,
+            #d_value,
+            #d_model,
+            #d_inner_hid,
+            #prepostprocess_dropout,
+            #attention_dropout,
+            #relu_dropout,
+            #hidden_act,
+            #preprocess_cmd="n",
+            #postprocess_cmd="da",
+            #param_initializer=None):
         """
         The encoder is composed of a stack of identical layers returned by calling
         encoder_layer.
         """
-        for i in range(n_layer):
+        for i in range(self.n_layer):
             enc_output = self.encoder_layer(
                 enc_input,
                 attn_bias,
-                n_head,
-                d_key,
-                d_value,
-                d_model,
-                d_inner_hid,
-                prepostprocess_dropout,
-                attention_dropout,
-                relu_dropout,
-                hidden_act,
-                preprocess_cmd,
-                postprocess_cmd,
-                param_initializer=param_initializer,
-                name=name + '_layer_' + str(i))
+                curr_block_id = i,
+                n_head = self.n_head,
+                d_key = self.d_key,
+                d_value = self.d_value,
+                d_model = self.d_model,
+                d_inner_hid = self.d_inner_hid,
+                prepostprocess_dropout = self.prepostprocess_dropout,
+                attention_dropout = self.attention_dropout,
+                relu_dropout = self.relu_dropout,
+                hidden_act = self.hidden_act,
+                preprocess_cmd = self.preprocess_cmd,
+                postprocess_cmd = self.postprocess_cmd,
+                param_initializer=self.param_initializer)
+            self.model['blocks'][i]['feedforward']['post_feedforward_out'] = enc_output
             enc_input = enc_output
+
         enc_output = self.pre_process_layer(
-            enc_output, preprocess_cmd, prepostprocess_dropout, name="post_encoder")
+            enc_output, self.preprocess_cmd, self.prepostprocess_dropout, 
+            scale_name = self.param_names['post_encoder']['scale'],
+            bias_name = self.param_names['post_encoder']['bias'])
+
+        self.model['post_encoder'] = enc_output
 
         return enc_output
 
 
 if __name__ == "__main__":
     bert = TransformerEncoder('bert_base')
+
+    embedding_input = fluid.data(shape = [-1, 128, 764], dtype = 'float32', name = 'embedding')
+    input_mask = fluid.data(shape = [-1, 128, 1], dtype = 'float32', name = 'mask')
+    att_mask = fluid.layers.matmul(
+        x = input_mask, y = input_mask, transpose_y=True)
+
+    bert.build(embedding_input, att_mask)
 
     print(bert.model)
 
