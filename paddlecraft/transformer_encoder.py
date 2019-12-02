@@ -23,8 +23,8 @@ import numpy as np
 import paddle.fluid as fluid
 import paddle.fluid.layers as layers
 
-from paddlecraft.base import logical2physical_name, physical2logical_name
-from paddlecraft.base import BaseModel
+from model.paddlecraft.base import logical2physical_name, physical2logical_name
+from model.paddlecraft.base import BaseModel
 
 class TransformerEncoder(BaseModel):
 
@@ -75,7 +75,7 @@ class TransformerEncoder(BaseModel):
         # the self.param_names can also help debug and print the model strcuture.
         for i in range(self.n_layer):
             curr_block = {}
-            curr_block_physical_name = logical2physical_name(self.name, '_layer_' + str(i))
+            curr_block_physical_name = logical2physical_name(self.name, 'layer_' + str(i))
 
             curr_model_block = {
                 'multi_head_attention' : {
@@ -92,46 +92,46 @@ class TransformerEncoder(BaseModel):
             curr_block['multi_head_attention'] = {
                 'pre_attention' : 
                     {
-                    'scale' : logical2physical_name(curr_block_physical_name, '_pre_att_layer_norm_scale'),
-                    'bias' : logical2physical_name(curr_block_physical_name, '_pre_att_layer_norm_bias'),
+                    'scale' : logical2physical_name(curr_block_physical_name, 'pre_att_layer_norm_scale'),
+                    'bias' : logical2physical_name(curr_block_physical_name, 'pre_att_layer_norm_bias'),
                     } if 'n' in self.preprocess_cmd else {},
                 'attention_fc' : 
                     {
-                    'query' : {'w' : logical2physical_name(curr_block_physical_name, '_multi_head_att_query_fc.w_0'), 
-                               'b' : logical2physical_name(curr_block_physical_name, '_multi_head_att_query_fc.b_0')},
-                    'key' : {'w' : logical2physical_name(curr_block_physical_name, '_multi_head_att_key_fc.w_0'), 
-                             'b' : logical2physical_name(curr_block_physical_name, '_multi_head_att_key_fc.b_0')},
-                    'value' : {'w' : logical2physical_name(curr_block_physical_name, '_multi_head_att_value_fc.w_0'), 
-                               'b' : logical2physical_name(curr_block_physical_name, '_multi_head_att_value_fc.b_0')},
-                    'output' : {'w' : logical2physical_name(curr_block_physical_name, '_multi_head_att_output_fc.w_0'),
-                                'b' : logical2physical_name(curr_block_physical_name, '_multi_head_att_output_fc.b_0')},
+                    'query' : {'w' : logical2physical_name(curr_block_physical_name, 'multi_head_att_query_fc.w_0'), 
+                               'b' : logical2physical_name(curr_block_physical_name, 'multi_head_att_query_fc.b_0')},
+                    'key' : {'w' : logical2physical_name(curr_block_physical_name, 'multi_head_att_key_fc.w_0'), 
+                             'b' : logical2physical_name(curr_block_physical_name, 'multi_head_att_key_fc.b_0')},
+                    'value' : {'w' : logical2physical_name(curr_block_physical_name, 'multi_head_att_value_fc.w_0'), 
+                               'b' : logical2physical_name(curr_block_physical_name, 'multi_head_att_value_fc.b_0')},
+                    'output' : {'w' : logical2physical_name(curr_block_physical_name, 'multi_head_att_output_fc.w_0'),
+                                'b' : logical2physical_name(curr_block_physical_name, 'multi_head_att_output_fc.b_0')},
                     },
                 'post_attention' : 
                     {
-                    'scale' : logical2physical_name(curr_block_physical_name, '_post_att_layer_norm_scale'),
-                    'bias' : logical2physical_name(curr_block_physical_name, '_post_att_layer_norm_bias')
+                    'scale' : logical2physical_name(curr_block_physical_name, 'post_att_layer_norm_scale'),
+                    'bias' : logical2physical_name(curr_block_physical_name, 'post_att_layer_norm_bias')
                     } if 'n' in self.postprocess_cmd else {}
             }
             curr_block['feedforward'] = {
                 'pre_feedforward' : 
                 {
-                    'scale' : logical2physical_name(curr_block_physical_name, '_pre_ffn_layer_norm_scale'),
-                    'bias' : logical2physical_name(curr_block_physical_name, '_pre_ffn_layer_norm_bias'),
+                    'scale' : logical2physical_name(curr_block_physical_name, 'pre_ffn_layer_norm_scale'),
+                    'bias' : logical2physical_name(curr_block_physical_name, 'pre_ffn_layer_norm_bias'),
                 } if 'n' in self.preprocess_cmd else {},
                 'feedforward_fc' : [
                     {
-                    'w' : logical2physical_name(curr_block_physical_name, '_ffn_fc_0.w_0'),
-                    'b' : logical2physical_name(curr_block_physical_name, '_ffn_fc_0.b_0'),
+                    'w' : logical2physical_name(curr_block_physical_name, 'ffn_fc_0.w_0'),
+                    'b' : logical2physical_name(curr_block_physical_name, 'ffn_fc_0.b_0'),
                     },
                     {
-                    'w' : logical2physical_name(curr_block_physical_name, '_ffn_fc_1.w_0'),
-                    'b' : logical2physical_name(curr_block_physical_name, '_ffn_fc_1.b_0'),
+                    'w' : logical2physical_name(curr_block_physical_name, 'ffn_fc_1.w_0'),
+                    'b' : logical2physical_name(curr_block_physical_name, 'ffn_fc_1.b_0'),
                     }
                     ],
                 'post_feedforward' : 
                     {
-                    'scale' : logical2physical_name(curr_block_physical_name, '_post_ffn_layer_norm_scale'),
-                    'bias' : logical2physical_name(curr_block_physical_name, '_post_ffn_layer_norm_bias'),
+                    'scale' : logical2physical_name(curr_block_physical_name, 'post_ffn_layer_norm_scale'),
+                    'bias' : logical2physical_name(curr_block_physical_name, 'post_ffn_layer_norm_bias'),
                     } if 'n' in self.postprocess_cmd else {}
             }
 
