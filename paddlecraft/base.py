@@ -19,6 +19,10 @@ import paddle
 import paddle.fluid as fluid
 
 
+def convert2gradname(name):
+    return name + "@GRAD"
+
+
 def logical2physical_name(model_name, logical_name):
     return '_'.join([model_name, logical_name])
 
@@ -34,28 +38,60 @@ class BaseModel(object):
 
     def get_param(self, param_name, main_program=None):
 
-        raise NotImplementedError(
-            "the get_param() method is not implemented yet.")
+        assert (isinstance(param_name, type('')) or isinstance(param_name,
+                                                               type(u'')))
+
+        _main_program = main_program if main_program is not None else fluid.default_main_program(
+        )
+
+        if param_name not in _main_program.global_block().vars:
+            raise Warning("[WARNING] the param %s is not in the program" %
+                          param_name)
+            return None
+
+        return _main_program.global_block().vars[param_name]
 
     def set_param(self, param, value, main_program=None):
 
         raise NotImplementedError(
             "the set_param() method is not implemented yet.")
 
-    def get_param_gradient(self, var, main_program=None):
+    def get_param_gradient(self, param_name, main_program=None):
+
+        assert (isinstance(param_name, type('')) or isinstance(param_name,
+                                                               type(u'')))
+
+        _main_program = main_program if main_program is not None else fluid.default_main_program(
+        )
+
+        param_grad_name = convert2gradname(param_name)
+
+        for _block in _main_program.blocks:
+            if param_grad_name in _block.vars:
+                return _block.vars[param_grad_name]
+
+        return None
+
+    def set_param_gradient(self, param_name, value, main_program=None):
 
         raise NotImplementedError(
-            "the get_gradient() method is not implemented yet.")
-
-    def set_param_gradient(self, var, main_program=None):
-
-        raise NotImplementedError(
-            "the get_param_gradient() method is not implemented yet.")
+            "the set_param_gradient() method is not implemented yet.")
 
     def get_var_gradient(self, var, main_program=None):
 
+        assert isinstance(var, Variable)
+
+        _main_program = main_program if main_program is not None else fluid.default_main_program(
+        )
+
+        var_name = var.name
+
+        return self.get_param_gradient(var_name, main_program=_main_program)
+
+    def set_var_gradient(self, var, value, main_program=None):
+
         raise NotImplementedError(
-            "the get_var_gradient() method is not implemented yet.")
+            "the set_var_gradient() method is not implemented yet.")
 
     def build(self):
 
