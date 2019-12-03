@@ -75,13 +75,13 @@ class TransformerEncoder(BaseModel):
 
             curr_model_block = {
                 'multi_head_attention': {
-                    'attention_softmax': None,
-                    'attention_out': None,
-                    'post_attention_out': None,
+                    'softmax': None,
+                    'fusion': None,
+                    'out': None,
                 },
                 'feedforward': {
-                    'feedforward_out': None,
-                    'post_feedforward_out': None
+                    'fusion': None,
+                    'out': None
                 }
             }
 
@@ -166,7 +166,7 @@ class TransformerEncoder(BaseModel):
             'bias':
             logical2physical_name(self.name, 'post_encoder_layer_norm_bias'),
         }
-        self.model['post_encoder'] = None
+        self.model['out'] = None
 
     def multi_head_attention(self,
                              queries,
@@ -277,7 +277,7 @@ class TransformerEncoder(BaseModel):
 
             # memorize the weights in block
             self.model['blocks'][curr_block_id]['multi_head_attention'][
-                'attention_softmax'] = weights
+                'softmax'] = weights
 
             if dropout_rate:
                 weights = layers.dropout(
@@ -515,10 +515,10 @@ class TransformerEncoder(BaseModel):
 
         if 'a' in _inner_res:
             self.model['blocks'][curr_block_id]['multi_head_attention'][
-                'attention_out'] = _inner_res['a']
+                'fusion'] = _inner_res['a']
         if 'd' in _inner_res and 'a' in _inner_res:
             self.model['blocks'][curr_block_id]['multi_head_attention'][
-                'post_attention_out'] = _inner_res['n']
+                'out'] = _inner_res['n']
 
         ffd_output = self.positionwise_feed_forward(
             self.pre_process_layer(
@@ -555,7 +555,7 @@ class TransformerEncoder(BaseModel):
 
         if 'a' in _inner_res:
             self.model['blocks'][curr_block_id]['feedforward'][
-                'feedforward_out'] = _inner_res['a']
+                'fusion'] = _inner_res['a']
 
         return final_out
 
@@ -597,8 +597,7 @@ class TransformerEncoder(BaseModel):
                 preprocess_cmd=self.preprocess_cmd,
                 postprocess_cmd=self.postprocess_cmd,
                 param_initializer=self.param_initializer)
-            self.model['blocks'][i]['feedforward'][
-                'post_feedforward_out'] = enc_output
+            self.model['blocks'][i]['feedforward']['out'] = enc_output
             enc_input = enc_output
 
         enc_output = self.pre_process_layer(
@@ -608,7 +607,7 @@ class TransformerEncoder(BaseModel):
             scale_name=self.param_names['post_encoder']['scale'],
             bias_name=self.param_names['post_encoder']['bias'])
 
-        self.model['post_encoder'] = enc_output
+        self.model['out'] = enc_output
 
         return enc_output
 
