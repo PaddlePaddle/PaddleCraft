@@ -105,7 +105,7 @@ class BaseModel(object):
 
         raise NotImplementedError("the load() method is not implemented yet.")
 
-    def print(self):
+    def print_model(self):
 
         raise NotImplementedError("the print() method is not implemented yet.")
 
@@ -113,5 +113,4 @@ class BaseModel(object):
 if __name__ == "__main__":
 
     base_model = BaseModel("test_model")
-
     base_model.get_param("test_param")
