@@ -44,7 +44,8 @@ class TransformerEncoder(BaseModel):
             hidden_act="gelu",
             preprocess_cmd="",
             postprocess_cmd="dan",
-            param_initializer=fluid.initializer.TruncatedNormal(scale=0.02)):
+            param_initializer=fluid.initializer.TruncatedNormal(scale=0.02),
+            is_training=True):
 
         self.name = name
         self.n_layer = n_layer
@@ -61,6 +62,7 @@ class TransformerEncoder(BaseModel):
         self.preprocess_cmd = preprocess_cmd
         self.postprocess_cmd = postprocess_cmd
         self.param_initializer = param_initializer
+        self.is_training = is_training
 
         self.param_names = {'blocks': []}
 
@@ -279,7 +281,7 @@ class TransformerEncoder(BaseModel):
             self.model['blocks'][curr_block_id]['multi_head_attention'][
                 'softmax'] = weights
 
-            if dropout_rate:
+            if dropout_rate and self.is_training:
                 weights = layers.dropout(
                     weights,
                     dropout_prob=dropout_rate,
@@ -350,7 +352,7 @@ class TransformerEncoder(BaseModel):
                 initializer=param_initializer),
             bias_attr=curr_param_block['feedforward']['feedforward_fc'][0]['b'])
 
-        if dropout_rate:
+        if dropout_rate and self.is_training:
             hidden = layers.dropout(
                 hidden,
                 dropout_prob=dropout_rate,
@@ -404,7 +406,7 @@ class TransformerEncoder(BaseModel):
                     out = layers.cast(x=out, dtype="float16")
                 inner_res['n'] = out
             elif cmd == "d":  # add dropout
-                if dropout_rate:
+                if dropout_rate and self.is_training:
                     out = layers.dropout(
                         out,
                         dropout_prob=dropout_rate,
@@ -563,19 +565,6 @@ class TransformerEncoder(BaseModel):
             self,
             enc_input,
             attn_bias, ):
-        #n_layer,
-        #n_head,
-        #d_key,
-        #d_value,
-        #d_model,
-        #d_inner_hid,
-        #prepostprocess_dropout,
-        #attention_dropout,
-        #relu_dropout,
-        #hidden_act,
-        #preprocess_cmd="n",
-        #postprocess_cmd="da",
-        #param_initializer=None):
         """
         The encoder is composed of a stack of identical layers returned by calling
         encoder_layer.
