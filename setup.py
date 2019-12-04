@@ -25,7 +25,7 @@ import setuptools
 
 setuptools.setup(
     name="paddlecraft",
-    version="0.0.1",
+    version="0.0.2",
     author="PaddlePaddle",
     author_email="zhouxiangyang@baidu.com",
     description="Make Neural Models as APIs for solving more complicated AI problems",
